@@ -1,10 +1,9 @@
 # =============================================================================
-# App Service Module (Linux) — frontend or backend web app
+# App Service Module (Linux) — public web or API app
 # Why:
-#  - public_network_access_enabled = false → no internet inbound
-#  - VNet integration → outbound traffic into private subnets (to peer tiers / MySQL)
-#  - Private Endpoint (created outside this module) → inbound only from VNet/VPN
-#  - ip_restriction → further lock who can hit the site (e.g. backend only from FE subnet)
+#  - public_network_access_enabled = true → internet users / mobile can reach the app
+#  - VNet integration → outbound into private subnets (API → MySQL, Key Vault PE)
+#  - ip_restriction (optional) → extra allow/deny rules when needed
 # =============================================================================
 
 terraform {
@@ -32,8 +31,7 @@ resource "azurerm_linux_web_app" "this" {
   service_plan_id     = azurerm_service_plan.this.id
   https_only          = true
 
-  # CRITICAL: block all public internet inbound
-  public_network_access_enabled = false
+  public_network_access_enabled = var.public_network_access_enabled
   virtual_network_subnet_id     = var.vnet_integration_subnet_id
 
   identity {
@@ -44,7 +42,7 @@ resource "azurerm_linux_web_app" "this" {
     always_on                         = var.sku_name != "F1" && var.sku_name != "D1"
     ftps_state                        = "Disabled"
     minimum_tls_version               = "1.2"
-    vnet_route_all_enabled            = true
+    vnet_route_all_enabled            = var.vnet_integration_subnet_id != null
     health_check_path                 = var.health_check_path
     health_check_eviction_time_in_min = var.health_check_path != null ? 5 : null
 
@@ -52,7 +50,7 @@ resource "azurerm_linux_web_app" "this" {
       node_version = var.node_version
     }
 
-    # Default deny: only explicit allow rules (subnet/service tag) may reach the app
+    # With no rules, Allow = open to internet (when public_network_access_enabled = true)
     ip_restriction_default_action = length(var.ip_restrictions) > 0 ? "Deny" : "Allow"
 
     dynamic "ip_restriction" {
@@ -64,7 +62,7 @@ resource "azurerm_linux_web_app" "this" {
         ip_address                = try(ip_restriction.value.ip_address, null)
         virtual_network_subnet_id = try(ip_restriction.value.virtual_network_subnet_id, null)
         service_tag               = try(ip_restriction.value.service_tag, null)
-        headers                   = try(ip_restriction.value.headers, null)
+        # Do not set headers = null — azurerm requires list(object) or omit the attribute.
       }
     }
   }
@@ -72,11 +70,13 @@ resource "azurerm_linux_web_app" "this" {
   app_settings = merge(
     {
       WEBSITE_RUN_FROM_PACKAGE                   = "1"
-      WEBSITE_DNS_SERVER                         = "168.63.129.16"
-      WEBSITE_VNET_ROUTE_ALL                     = "1"
       APPLICATIONINSIGHTS_CONNECTION_STRING      = var.app_insights_connection_string
       ApplicationInsightsAgent_EXTENSION_VERSION = "~3"
     },
+    var.vnet_integration_subnet_id != null ? {
+      WEBSITE_DNS_SERVER     = "168.63.129.16"
+      WEBSITE_VNET_ROUTE_ALL = "1"
+    } : {},
     var.app_settings
   )
 

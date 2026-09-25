@@ -9,7 +9,7 @@ output "name" {
 }
 
 output "default_hostname" {
-  description = "Default hostname (resolves privately via Private DNS when PE is attached)"
+  description = "Default public hostname (https://<name>.azurewebsites.net)"
   value       = azurerm_linux_web_app.this.default_hostname
 }
 

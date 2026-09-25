@@ -1,8 +1,7 @@
+# Manual apply only (workflow_dispatch) — secrets / OIDC / GitHub Environments
+# can be wired later. Prefer Environment protection (required reviewers) on "prod".
 name: Terraform Apply
 
-# Manual apply for the learning path (dev only).
-# To extend later: add more options under inputs.environment and matching
-# environments/<env>/ folders + tfstate-<env> containers.
 on:
   workflow_dispatch:
     inputs:
@@ -12,8 +11,10 @@ on:
         type: choice
         options:
           - dev
+          - qa
+          - prod
       confirm:
-        description: "Type the environment name to confirm apply (must be: dev)"
+        description: "Type the environment name to confirm (must match selection)"
         required: true
         type: string
 
@@ -67,7 +68,7 @@ jobs:
           resource_group_name  = "${TF_STATE_RG}"
           storage_account_name = "${TF_STATE_SA}"
           container_name       = "tfstate-${{ inputs.environment }}"
-          key                  = "enterprise.tfstate"
+          key                  = "internetface.tfstate"
           use_oidc             = true
           EOF
 
@@ -76,8 +77,7 @@ jobs:
 
       - name: Terraform Plan
         run: |
-          terraform plan -input=false -var-file=terraform.tfvars -out=tfplan \
-            -var="aad_tenant_id=${{ secrets.AZURE_TENANT_ID }}"
+          terraform plan -input=false -var-file=terraform.tfvars -out=tfplan
 
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan

@@ -4,7 +4,7 @@ variable "project" {
 }
 
 variable "environment" {
-  description = "Environment name (this learning repo uses: dev). Add more later as needed."
+  description = "Environment name: dev | qa | prod"
   type        = string
 }
 

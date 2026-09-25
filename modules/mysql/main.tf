@@ -1,6 +1,7 @@
 # =============================================================================
 # MySQL Flexible Server — private VNet integration (no public access)
-# Why: Database reachable only from the backend App Service subnet via NSG + VNet.
+# Why: Database reachable only from the API App Service subnet (NSG + VNet).
+# Frontend / mobile never connect to MySQL directly.
 # =============================================================================
 
 terraform {

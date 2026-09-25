@@ -16,9 +16,15 @@ variable "app_service_plan_name" {
 }
 
 variable "sku_name" {
-  description = "App Service Plan SKU (B1/P0v3 for non-prod; P1v3+ for prod). Private Endpoints require Standard+ or Isolated."
+  description = "App Service Plan SKU (B1 for cheap public demos; P0v3/P1v3+ for higher load)"
   type        = string
-  default     = "P0v3"
+  default     = "B1"
+}
+
+variable "public_network_access_enabled" {
+  description = "Allow inbound from the public internet (required for internet-facing web/API)"
+  type        = bool
+  default     = true
 }
 
 variable "node_version" {
@@ -28,8 +34,9 @@ variable "node_version" {
 }
 
 variable "vnet_integration_subnet_id" {
-  description = "Delegated subnet for regional VNet integration (outbound)"
+  description = "Delegated subnet for regional VNet integration (outbound). Null = no VNet integration."
   type        = string
+  default     = null
 }
 
 variable "health_check_path" {
@@ -53,7 +60,7 @@ variable "connection_strings" {
 }
 
 variable "ip_restrictions" {
-  description = "Access restriction rules. Empty = rely on public_network_access_enabled=false + Private Endpoint only."
+  description = "Optional access restriction rules. Empty + public access = open to internet (HTTPS)."
   type = list(object({
     name                      = string
     priority                  = number
@@ -61,7 +68,6 @@ variable "ip_restrictions" {
     ip_address                = optional(string)
     virtual_network_subnet_id = optional(string)
     service_tag               = optional(string)
-    headers                   = optional(map(list(string)))
   }))
   default = []
 }

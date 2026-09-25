@@ -1,6 +1,5 @@
 # =============================================================================
-# Private Endpoint Module
-# Why: Expose PaaS services (App Service, Key Vault) only on the private network.
+# Private Endpoint — Key Vault (secrets over private link from the VNet)
 # =============================================================================
 
 terraform {

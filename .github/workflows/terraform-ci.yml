@@ -1,25 +1,22 @@
+# Manual plan only — secrets / OIDC / GitHub Environments can be wired later.
 name: Terraform CI
 
 on:
-  # pull_request:
-  #   branches: [main, master]
-  #   paths:
-  #     - "modules/**"
-  #     - "environments/**"
-  #     - "bootstrap/**"
-  #     - ".github/workflows/**"
-  # push:
-  #   branches: [main, master]
-  #   paths:
-  #     - "modules/**"
-  #     - "environments/**"
-  #     - "bootstrap/**"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to plan (or all)"
+        required: true
+        type: choice
+        options:
+          - all
+          - dev
+          - qa
+          - prod
 
 permissions:
   contents: read
   id-token: write
-  pull-requests: write
 
 env:
   TF_VERSION: "1.7.5"
@@ -54,17 +51,22 @@ jobs:
             fi
           done
 
-  # Learning path: plan only "dev".
-  # To extend later: change strategy.matrix.environment to [dev, qa, ...]
-  # and create matching environments/<env>/ folders + state containers.
   plan:
-    name: Plan (dev)
+    name: Plan (${{ matrix.environment }})
     needs: fmt-validate
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ matrix.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, qa, prod]
+    # Skip envs not selected when dispatching a single environment
+    if: >
+      inputs.environment == 'all' ||
+      inputs.environment == matrix.environment
     defaults:
       run:
-        working-directory: environments/dev
+        working-directory: environments/${{ matrix.environment }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,12 +86,13 @@ jobs:
         env:
           TF_STATE_RG: ${{ secrets.TF_STATE_RESOURCE_GROUP }}
           TF_STATE_SA: ${{ secrets.TF_STATE_STORAGE_ACCOUNT }}
+          ENV_NAME: ${{ matrix.environment }}
         run: |
           cat > backend.hcl <<EOF
           resource_group_name  = "${TF_STATE_RG}"
           storage_account_name = "${TF_STATE_SA}"
-          container_name       = "tfstate-dev"
-          key                  = "enterprise.tfstate"
+          container_name       = "tfstate-${ENV_NAME}"
+          key                  = "internetface.tfstate"
           use_oidc             = true
           EOF
 
@@ -101,39 +104,14 @@ jobs:
 
       - name: Terraform Plan
         run: |
-          terraform plan -input=false -var-file=terraform.tfvars -out=tfplan \
-            -var="aad_tenant_id=${{ secrets.AZURE_TENANT_ID }}"
+          terraform plan -input=false -var-file=terraform.tfvars -out=tfplan
           terraform show -no-color tfplan > plan.txt
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-dev-${{ github.run_id }}
+          name: tfplan-${{ matrix.environment }}-${{ github.run_id }}
           path: |
-            environments/dev/tfplan
-            environments/dev/plan.txt
+            environments/${{ matrix.environment }}/tfplan
+            environments/${{ matrix.environment }}/plan.txt
           retention-days: 7
-
-      - name: Comment plan on PR
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = 'environments/dev/plan.txt';
-            let plan = '';
-            try {
-              plan = fs.readFileSync(path, 'utf8');
-            } catch (e) {
-              plan = `Plan file missing: ${e.message}`;
-            }
-            if (plan.length > 60000) {
-              plan = plan.substring(0, 60000) + '\n...truncated...';
-            }
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `### Terraform Plan — \`dev\`\n\`\`\`\n${plan}\n\`\`\``
-            });

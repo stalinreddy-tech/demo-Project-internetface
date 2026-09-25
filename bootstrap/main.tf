@@ -1,9 +1,7 @@
 # =============================================================================
 # Bootstrap: Azure Storage Account for Terraform Remote State
-# Run this ONCE before deploying the app stack. Creates the state backend.
-#
-# Learning path: one container (tfstate-dev) only.
-# Later you can add more containers (tfstate-qa, tfstate-prod, …) the same way.
+# Run this ONCE (or re-apply when adding containers). Creates the state backend.
+# Containers: tfstate-dev, tfstate-qa, tfstate-prod (one blob key per env).
 # =============================================================================
 
 terraform {
@@ -35,7 +33,7 @@ resource "random_string" "suffix" {
 }
 
 resource "azurerm_resource_group" "tfstate" {
-  name     = "rg-tfstate-enterprise"
+  name     = "rg-tfstate-internetface"
   location = var.location
 
   tags = {
@@ -76,11 +74,10 @@ resource "azurerm_storage_account" "tfstate" {
   }
 }
 
-# One container for the learning path (dev).
-# To add another env later: either add another resource, or use for_each with
-# toset(["dev", "qa", ...]) and create matching environments/<env>/ folders.
-resource "azurerm_storage_container" "tfstate_dev" {
-  name                  = "tfstate-dev"
+resource "azurerm_storage_container" "tfstate" {
+  for_each = toset(["dev", "qa", "prod"])
+
+  name                  = "tfstate-${each.key}"
   storage_account_name  = azurerm_storage_account.tfstate.name
   container_access_type = "private"
 }
