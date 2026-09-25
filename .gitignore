@@ -1,0 +1,25 @@
+# Local overrides / secrets
+*.tfvars
+!*.tfvars.example
+!environments/*/terraform.tfvars
+backend.hcl
+!environments/*/backend.hcl
+*.tfplan
+tfplan
+plan.txt
+.terraform/
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate*
+*.tfstate
+*.tfstate.*
+.DS_Store
+*.pem
+*.pfx
+.env
+.idea/
+.vscode/

@@ -1,0 +1,83 @@
+name: Terraform Apply
+
+# Manual apply for the learning path (dev only).
+# To extend later: add more options under inputs.environment and matching
+# environments/<env>/ folders + tfstate-<env> containers.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to apply"
+        required: true
+        type: choice
+        options:
+          - dev
+      confirm:
+        description: "Type the environment name to confirm apply (must be: dev)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.7.5"
+  ARM_USE_OIDC: true
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  apply:
+    name: Apply (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: environments/${{ inputs.environment }}
+    steps:
+      - name: Confirm environment
+        run: |
+          if [ "${{ inputs.confirm }}" != "${{ inputs.environment }}" ]; then
+            echo "Confirmation '${{ inputs.confirm }}' does not match '${{ inputs.environment }}'"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Write backend.hcl from secrets
+        env:
+          TF_STATE_RG: ${{ secrets.TF_STATE_RESOURCE_GROUP }}
+          TF_STATE_SA: ${{ secrets.TF_STATE_STORAGE_ACCOUNT }}
+        run: |
+          cat > backend.hcl <<EOF
+          resource_group_name  = "${TF_STATE_RG}"
+          storage_account_name = "${TF_STATE_SA}"
+          container_name       = "tfstate-${{ inputs.environment }}"
+          key                  = "enterprise.tfstate"
+          use_oidc             = true
+          EOF
+
+      - name: Terraform Init
+        run: terraform init -input=false -backend-config=backend.hcl
+
+      - name: Terraform Plan
+        run: |
+          terraform plan -input=false -var-file=terraform.tfvars -out=tfplan \
+            -var="aad_tenant_id=${{ secrets.AZURE_TENANT_ID }}"
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve tfplan
